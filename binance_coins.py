@@ -11,7 +11,7 @@ import math
 import sys
 import getopt
 import configparser
-
+import time, datetime
 
 binance_api_key = ""
 binance_api_secret_key = ""
@@ -367,31 +367,56 @@ def read_coins_history_file():
 
 
 def update_top_ranked_coins():
-    url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
-    parameters = {
-        'start': '1',
-        'limit': top_n_ranked_coins,
-        'convert': 'USD'
-    }
+    url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false'
+    
     headers = {
         'Accepts': 'application/json',
-        'X-CMC_PRO_API_KEY': coinmarketcap_api_key,
     }
 
     session = Session()
     session.headers.update(headers)
 
-    print("Getting top "+str(top_n_ranked_coins)+" coins...")
+    response = session.get(url)
+    data = json.loads(response.text)
+
+    fullList = {}
+
+    targetDate = datetime.datetime.fromtimestamp(int(history_end)).strftime('%d-%m-%Y')
+
+    print("Getting coin prices for " + str(targetDate))
+
+    for coin in data:
+        if any([x in coin['symbol'].upper() for x in ['BULL', 'BEAR','UP', 'DOWN', 'HEDGE', 'LONG', 'SHORT']]):
+            data.remove(coin)
+            continue
+
+        url = 'https://api.coingecko.com/api/v3/coins/' + str(coin['id']) + "/history?date=" + str(targetDate) + "&localization=false"
+
+        session = Session()
+        session.headers.update(headers)
+
+        response = session.get(url)
+        history = json.loads(response.text)
+
+        try:
+            print(str(history['symbol']).upper() + ' ## ' + str(history['market_data']['total_volume']['usd']))
+            fullList[history['symbol'].upper()] = int(history['market_data']['total_volume']['usd'])   
+        except:
+            pass
+
+        time.sleep(1.3)
+        
+    print("Parsing top "+str(top_n_ranked_coins)+" coins...")
     try:
-        response = session.get(url, params=parameters)
-        data = json.loads(response.text)
         with open(used_coins_file, 'w') as writer:
-            for coin in data['data']:
-                writer.write(coin['symbol']+'\n')
+            # Sort shortList by value
+            for coin in sorted(fullList, key=fullList.get, reverse=True)[:top_n_ranked_coins]:
+                if float(fullList[coin]) > 0:
+                    writer.write(coin+'\n')
+
         print("Top coin list stored successfully!")
     except (ConnectionError, Timeout, TooManyRedirects) as e:
         print(e)
-
 
 def load_configuration():
     global binance_api_key, binance_api_secret_key, coinmarketcap_api_key, client, first_n_coins, top_n_ranked_coins, correlation_greater_than, correlation_less_than, paired_coin, history_start, history_end, history_interval, coin_history_file, used_coins_file, ignored_coins_file
