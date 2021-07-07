@@ -11,7 +11,7 @@ import math
 import sys
 import getopt
 import configparser
-import time, datetime
+import time, datetime, argparse
 
 binance_api_key = ""
 binance_api_secret_key = ""
@@ -20,8 +20,8 @@ top_n_ranked_coins = 100
 correlation_greater_than = 0.90
 correlation_less_than = 1
 paired_coin = "USDT"
-history_start = 2021-01-01.00:00:00
-history_end = 2021-01-02.00:00:00
+history_start = "2021-01-01.00:00:00"
+history_end = "2021-02-31.00:00:00"
 history_interval = Client.KLINE_INTERVAL_12HOUR
 coin_history_file = 'historical_klines.json'
 used_coins_file = 'used_coins'
@@ -421,6 +421,7 @@ def update_top_ranked_coins():
     except (ConnectionError, Timeout, TooManyRedirects) as e:
         print(e)
 
+
 def load_configuration():
     global binance_api_key, binance_api_secret_key, client, first_n_coins, top_n_ranked_coins, correlation_greater_than, correlation_less_than, paired_coin, history_start, history_end, history_interval, coin_history_file, used_coins_file, ignored_coins_file
     if not os.path.isfile('config.ini'):
@@ -461,20 +462,70 @@ def help():
         "\t--one-correlated-list <coin>\t\tList of all correlated coins in 'used_coins' file with one.")
     print(
         "\t--all-correlated-grouped\t\tList of all correlated coins in 'used_coins' file grouped by their relationship.")
+    print(
+            "\t--start-datetime <datetime>\t\tFetch historical data from date/time e.g 2020-12-15.00:00:00 - works with: [--update-coins-history|--update-top-coins]")
+    print(
+        "\t--end-datetime <datetime>\t\tFetch historical data until date/time e.g 2020-12-31.23:59:59 - works with: [--update-coins-history|--update-top-coins]")
 
 
 def main(argv):
+    ######################################################################################
+    # gestions des arguments lors de l'execution du script
+    ######################################################################################
+    parser = argparse.ArgumentParser(description='********************************************************************************************************\n'+
+                                                 '** Binance correlated coins finder                                                                    **\n'+
+                                                 '**  • The program will calculate the correlation of all the coins listed in the "used_coins" file     **\n'+
+                                                 '**    and will show the ones with correlation falling between "correlation_greater_than" and          **\n'+
+                                                 '**    "correlation_less_than" config entries                                                          **\n'+
+                                                 '**  • Unwanted coins can be listed in "ignored_coins". Those will not be shown in the results         **\n'+
+                                                 '********************************************************************************************************\n',
+                                                 formatter_class=argparse.RawTextHelpFormatter)
+
+    parser._action_groups.pop()
+
+    # Data Gathering
+    required = parser.add_argument_group('Data Gathering')
+    required.add_argument('-H', '--update-coins-history', action='store_true',help='Updates the historical price of all the coins in Binance.')
+    required.add_argument('-c', '--update-top-coins', action='store_true',help='Updates "used_coins" file with the 100 best coins in CoinGecko.')
+
+    # Correlation Arguments
+    required = parser.add_argument_group('Correlation calculation')
+    required.add_argument('-A', '--all-correlated-values', action='store_true',help='Correlation values of all coins in "used_coins" file.')
+    required.add_argument('-a', '--one-correlated-values',metavar='<coin>',nargs=1,help='Correlation values of all coins in "used_coins" file with one.')
+    required.add_argument('-L', '--all-correlated-list',action='store_true',help='List of all correlated coins in "used_coins" file.')
+    required.add_argument('-l', '--one-correlated-list',metavar='<coin>',nargs=1,help='List of all correlated coins in "used_coins" file with one.')
+    required.add_argument('-G', '--all-correlated-grouped', action='store_true',help='List of all correlated coins in "used_coins" file grouped by their relationship.')
+    
+    # Optionnal Arguments
+    optional = parser.add_argument_group('Optionnal arguments')
+    optional.add_argument('-s','--start-datetime',metavar='<datetime>',nargs=1,help='Fetch historical data from date/time\n - e.g 2020-12-31.23:59:59')
+    optional.add_argument('-e','--end-datetime',metavar='<datetime>',nargs=1,help='Fetch historical data until date/time\n - e.g 2020-12-15.00:00:00')
+    optional.add_argument('-o','--date-offset',metavar='<offset>',nargs=1,help='Fetch historical data until start time minus [-] offset in days\n - e.g (2020-12-31.23:59:59 - 7 days) = 2020-12-24.23:59:59')
+    
+    global args
+    args = parser.parse_args()
+    
+    if not (args.all_correlated_grouped or args.all_correlated_list or args.all_correlated_values or args.one_correlated_list or args.one_correlated_values or args.update_coins_history or args.update_top_coins):
+      parser.print_help()
+    
     load_configuration()
+    
+
+
+
+
+    """
     try:
         opts, args = getopt.getopt(
-            argv, "h", ["update-coins-history", "update-top-coins", "all-correlated-values", "one-correlated-values=", "all-correlated-list", "one-correlated-list=", "all-correlated-grouped"])
+            argv, "h", ["update-coins-history", "update-top-coins", "all-correlated-values", "one-correlated-values=", "all-correlated-list", "one-correlated-list=", "all-correlated-grouped", "help", "start-datetime", "end-datetime"])
     except getopt.GetoptError:
         print("usage:\t"+"binance_coins.py [option]")
         sys.exit(2)
     if len(opts) <= 0:
         help()
+
     for opt, arg in opts:
-        if opt == '-h':
+        if opt == '-h' or opt == '--help' or opt not in ("--update-coins-history", "--update-top-coins", "--all-correlated-values", "--one-correlated-values=", "--all-correlated-list", "--one-correlated-list=", "--all-correlated-grouped"):
             help()
             sys.exit()
         elif opt in ("--update-coins-history"):
@@ -491,7 +542,7 @@ def main(argv):
             get_one_correlated_list(arg)
         elif opt in ("--all-correlated-grouped"):
             get_all_correlated_grouped()
-
+    """
 
 if __name__ == "__main__":
     main(sys.argv[1:])
