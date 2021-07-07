@@ -15,14 +15,13 @@ import time, datetime
 
 binance_api_key = ""
 binance_api_secret_key = ""
-coinmarketcap_api_key = ""
 first_n_coins = 100
 top_n_ranked_coins = 100
 correlation_greater_than = 0.90
 correlation_less_than = 1
 paired_coin = "USDT"
-history_start = "90 day ago UTC"
-history_end = "80 day ago UTC"
+history_start = 2021-01-01.00:00:00
+history_end = 2021-01-02.00:00:00
 history_interval = Client.KLINE_INTERVAL_12HOUR
 coin_history_file = 'historical_klines.json'
 used_coins_file = 'used_coins'
@@ -113,6 +112,9 @@ def get_one_coin_combinations(coin_list, coin):
 def get_coins_history(coin_list, bridge):
     klines = {}
 
+    start = str(datetime.datetime.strptime(history_start, '%Y-%m-%d.%H:%M:%S').timestamp())
+    end = str(datetime.datetime.strptime(history_end, '%Y-%m-%d.%H:%M:%S').timestamp())
+
     count = 0
     for coin in coin_list:
 
@@ -120,7 +122,7 @@ def get_coins_history(coin_list, bridge):
               str(round((count*100)/len(coin_list))) + "%")
         try:
             coin_klines = client.get_historical_klines(
-                coin+bridge, history_interval, history_start, history_end)
+                coin+bridge, history_interval, start, end)
             klines[coin] = coin_klines
         except BinanceAPIException as e:
             print("Error"+str(e))
@@ -381,9 +383,10 @@ def update_top_ranked_coins():
 
     fullList = {}
 
-    targetDate = datetime.datetime.fromtimestamp(int(history_end)).strftime('%d-%m-%Y')
+    
+    targetDate = datetime.datetime.strptime(history_end, '%Y-%m-%d.%H:%M:%S').strftime('%d-%m-%Y')
 
-    print("Getting coin prices for " + str(targetDate))
+    print("Fetching trade volumes for " + str(targetDate))
 
     for coin in data:
         if any([x in coin['symbol'].upper() for x in ['BULL', 'BEAR','UP', 'DOWN', 'HEDGE', 'LONG', 'SHORT']]):
@@ -419,7 +422,7 @@ def update_top_ranked_coins():
         print(e)
 
 def load_configuration():
-    global binance_api_key, binance_api_secret_key, coinmarketcap_api_key, client, first_n_coins, top_n_ranked_coins, correlation_greater_than, correlation_less_than, paired_coin, history_start, history_end, history_interval, coin_history_file, used_coins_file, ignored_coins_file
+    global binance_api_key, binance_api_secret_key, client, first_n_coins, top_n_ranked_coins, correlation_greater_than, correlation_less_than, paired_coin, history_start, history_end, history_interval, coin_history_file, used_coins_file, ignored_coins_file
     if not os.path.isfile('config.ini'):
         raise Exception(
             "Configuration file 'config.ini' not found")
@@ -429,7 +432,6 @@ def load_configuration():
 
     binance_api_key = config['binance_coins']['binance_api_key']
     binance_api_secret_key = config['binance_coins']['binance_api_secret_key']
-    coinmarketcap_api_key = config['binance_coins']['coinmarketcap_api_key']
     first_n_coins = int(config['binance_coins']['first_n_coins'])
     top_n_ranked_coins = int(config['binance_coins']['top_n_ranked_coins'])
     correlation_greater_than = float(
