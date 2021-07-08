@@ -8,27 +8,27 @@ import itertools as it
 import os
 import json
 import math
-import sys
-import getopt
 import configparser
-import time, datetime, argparse
+import time, argparse
+from datetime import datetime, timezone, timedelta
 
 binance_api_key = ""
 binance_api_secret_key = ""
-first_n_coins = 100
-top_n_ranked_coins = 100
-correlation_greater_than = 0.90
+first_n_coins = 150
+top_n_ranked_coins = 60
+correlation_greater_than = 0.70
 correlation_less_than = 1
 paired_coin = "USDT"
-history_start = "2021-01-01.00:00:00"
-history_end = "2021-02-31.00:00:00"
-history_interval = Client.KLINE_INTERVAL_12HOUR
+history_end = datetime.now().astimezone(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+#history_end = (datetime.now().astimezone(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)) - timedelta(days = 1)
+#history_end = datetime.now().replace(tzinfo=timezone.utc).astimezone(tz=None).replace(hour=0, minute=0, second=0, microsecond=0)
+history_delta = 7
+history_start = None
+history_interval = Client.KLINE_INTERVAL_15MINUTE
 coin_history_file = 'historical_klines.json'
 used_coins_file = 'used_coins'
 ignored_coins_file = 'ignored_coins'
-
 client = Client()
-
 
 def get_coins_from_file(file):
     supported_coin_list = []
@@ -48,8 +48,9 @@ def get_coins_from_file(file):
 
 def get_all_tickers(bridge):
     coins = []
+    
     for ticker in client.get_all_tickers():
-        if(bridge in ticker['symbol']):
+        if bridge in ticker['symbol'] and ticker['symbol'].replace(bridge, "") in get_coins_from_file(used_coins_file):
             coins.append(ticker['symbol'].replace(bridge, ''))
     return coins
 
@@ -112,8 +113,10 @@ def get_one_coin_combinations(coin_list, coin):
 def get_coins_history(coin_list, bridge):
     klines = {}
 
-    start = str(datetime.datetime.strptime(history_start, '%Y-%m-%d.%H:%M:%S').timestamp())
-    end = str(datetime.datetime.strptime(history_end, '%Y-%m-%d.%H:%M:%S').timestamp())
+    end = str(history_end.timestamp())
+    start = str(history_start.timestamp())
+
+    print('Fetching trade data between "' + history_start.astimezone(tz=timezone.utc).strftime('%d %B %Y %H:%M:%S') + '" and "' + history_end.astimezone(tz=timezone.utc).strftime('%d %B %Y %H:%M:%S') + '"')
 
     count = 0
     for coin in coin_list:
@@ -340,11 +343,11 @@ def group_correlations(correlations):
 def verify_coins_files():
     if not os.path.isfile(coin_history_file):
         raise Exception(
-            "Coin history '"+coin_history_file+"' not found, please run: binance_coins.py --update-coins-history")
+            "Coin history '"+coin_history_file+"' not found, please run: binance_api.py --update-coins-history")
 
     if not os.path.isfile(used_coins_file):
         raise Exception(
-            "Top coins file '"+used_coins_file+"' not found, please run: binance_coins.py --update-top-coins")
+            "Top coins file '"+used_coins_file+"' not found, please run: binance_api.py --update-top-coins")
 
 
 def update_coin_historical_klines():
@@ -369,27 +372,71 @@ def read_coins_history_file():
 
 
 def update_top_ranked_coins():
-    url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false'
-    
     headers = {
         'Accepts': 'application/json',
     }
 
+    ignored_coins = []
+
+    # get stablecoin list
+    url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=stablecoins&order=market_cap_desc&per_page=250&page=1&sparkline=false'
     session = Session()
     session.headers.update(headers)
+    response = session.get(url)
+    raw_list = json.loads(response.text)
+    for coin in raw_list:
+      ignored_coins.append(coin['symbol'].upper())
 
+    # get compond token list
+    url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=compound-tokens&order=market_cap_desc&per_page=250&page=1&sparkline=false'
+    session = Session()
+    session.headers.update(headers)
+    response = session.get(url)
+    raw_list = json.loads(response.text)
+    for coin in raw_list:
+      ignored_coins.append(coin['symbol'].upper())
+
+    # get compond token list
+    url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=aave-tokens&order=market_cap_desc&per_page=250&page=1&sparkline=false'
+    session = Session()
+    session.headers.update(headers)
+    response = session.get(url)
+    raw_list = json.loads(response.text)
+    for coin in raw_list:
+      ignored_coins.append(coin['symbol'].upper())
+
+    # get wrapped token list
+    url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=wrapped-tokens&order=market_cap_desc&per_page=250&page=1&sparkline=false'
+    session = Session()
+    session.headers.update(headers)
+    response = session.get(url)
+    raw_list = json.loads(response.text)
+    for coin in raw_list:
+      ignored_coins.append(coin['symbol'].upper())
+
+    # get eth 2.0 staking token list
+    url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=eth-2-0-staking&order=market_cap_desc&per_page=250&page=1&sparkline=false'
+    session = Session()
+    session.headers.update(headers)
+    response = session.get(url)
+    raw_list = json.loads(response.text)
+    for coin in raw_list:
+      ignored_coins.append(coin['symbol'].upper())
+
+    # get top 250 coins
+    url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false'
+    session = Session()
+    session.headers.update(headers)
     response = session.get(url)
     data = json.loads(response.text)
 
     fullList = {}
 
+    targetDate = history_end.strftime('%d-%m-%Y')
     
-    targetDate = datetime.datetime.strptime(history_end, '%Y-%m-%d.%H:%M:%S').strftime('%d-%m-%Y')
-
-    print("Fetching trade volumes for " + str(targetDate))
-
+    print("Fetching trade volume data for " + history_end.astimezone(tz=timezone.utc).strftime('%d %B %Y') + ' (' + str(history_end.timestamp()) + ')')
     for coin in data:
-        if any([x in coin['symbol'].upper() for x in ['BULL', 'BEAR','UP', 'DOWN', 'HEDGE', 'LONG', 'SHORT']]):
+        if any([x in coin['symbol'].upper() for x in ['BULL', 'BEAR','UP', 'DOWN', 'HEDGE', 'LONG', 'SHORT']]) or coin['symbol'].upper() in ignored_coins:
             data.remove(coin)
             continue
 
@@ -423,7 +470,8 @@ def update_top_ranked_coins():
 
 
 def load_configuration():
-    global binance_api_key, binance_api_secret_key, client, first_n_coins, top_n_ranked_coins, correlation_greater_than, correlation_less_than, paired_coin, history_start, history_end, history_interval, coin_history_file, used_coins_file, ignored_coins_file
+    global binance_api_key, binance_api_secret_key, client, first_n_coins, top_n_ranked_coins, correlation_greater_than, correlation_less_than, paired_coin, history_start, history_delta, history_end, history_interval, coin_history_file, used_coins_file, ignored_coins_file
+    """
     if not os.path.isfile('config.ini'):
         raise Exception(
             "Configuration file 'config.ini' not found")
@@ -431,44 +479,45 @@ def load_configuration():
     config = configparser.ConfigParser()
     config.read('config.ini')
 
-    binance_api_key = config['binance_coins']['binance_api_key']
-    binance_api_secret_key = config['binance_coins']['binance_api_secret_key']
-    first_n_coins = int(config['binance_coins']['first_n_coins'])
-    top_n_ranked_coins = int(config['binance_coins']['top_n_ranked_coins'])
-    correlation_greater_than = float(
-        config['binance_coins']['correlation_greater_than'])
-    correlation_less_than = float(
-        config['binance_coins']['correlation_less_than'])
-    paired_coin = config['binance_coins']['paired_coin']
-    history_start = config['binance_coins']['history_start']
-    history_end = config['binance_coins']['history_end']
+    binance_api_key = config['binance_api']['binance_api_key']
+    binance_api_secret_key = config['binance_api']['binance_api_secret_key']
     client = Client(binance_api_key, binance_api_secret_key)
+    """
+    # read optional arguments
+    if args.start_datetime:
+      try:
+        history_start = datetime.strptime(args.start_datetime[0], '%Y-%m-%d.%H:%M:%S').replace(tzinfo=timezone.utc).astimezone(tz=None)
+        #history_start = datetime.strptime(args.start_datetime[0], '%Y-%m-%d.%H:%M:%S').astimezone(tz=timezone.utc)
+      except:
+        print('Invalid Date format - expected : "%Y-%m-%d.%H:%M:%S"')
+        exit()
+
+    if args.end_datetime:
+      try:
+        history_end = datetime.strptime(args.end_datetime[0], '%Y-%m-%d.%H:%M:%S').replace(tzinfo=timezone.utc).astimezone(tz=None)
+        #history_end = datetime.strptime(args.end_datetime[0], '%Y-%m-%d.%H:%M:%S').astimezone(tz=timezone.utc)
+      except:
+        print('Invalid Date format - expected : "%Y-%m-%d.%H:%M:%S"')
+        exit()
+
+    if args.date_offset and int(args.date_offset[0]) > 0:
+      try:
+        history_delta = int(args.date_offset[0])
+      except:
+        print('Offset must be positive - expected : INT > 0')
+        exit()
+
+    if args.paired_coin:
+      try:
+        paired_coin = str(args.paired_coin[0])
+      except:
+        pass
+
+    if history_start is None:
+      history_start = (history_end - timedelta(days = history_delta))
 
 
-def help():
-    print("")
-    print("Usage:")
-    print("\tbinance_coins.py [option]")
-    print("Options:")
-    print(
-        "\t--update-coins-history\t\t\tUpdates the historical price of all the coins in Binance.")
-    print(
-        "\t--update-top-coins\t\t\tUpdates 'used_coins' file with the 100 best coins in CoinMarketCap.")
-    print("\t--all-correlated-values\t\t\tCorrelation values of all coins in 'used_coins' file.")
-    print(
-        "\t--one-correlated-values <coin>\t\tCorrelation values of all coins in 'used_coins' file with one.")
-    print("\t--all-correlated-list\t\t\tList of all correlated coins in 'used_coins' file.")
-    print(
-        "\t--one-correlated-list <coin>\t\tList of all correlated coins in 'used_coins' file with one.")
-    print(
-        "\t--all-correlated-grouped\t\tList of all correlated coins in 'used_coins' file grouped by their relationship.")
-    print(
-            "\t--start-datetime <datetime>\t\tFetch historical data from date/time e.g 2020-12-15.00:00:00 - works with: [--update-coins-history|--update-top-coins]")
-    print(
-        "\t--end-datetime <datetime>\t\tFetch historical data until date/time e.g 2020-12-31.23:59:59 - works with: [--update-coins-history|--update-top-coins]")
-
-
-def main(argv):
+def main():
     ######################################################################################
     # gestions des arguments lors de l'execution du script
     ######################################################################################
@@ -500,49 +549,37 @@ def main(argv):
     optional = parser.add_argument_group('Optionnal arguments')
     optional.add_argument('-s','--start-datetime',metavar='<datetime>',nargs=1,help='Fetch historical data from date/time\n - e.g 2020-12-31.23:59:59')
     optional.add_argument('-e','--end-datetime',metavar='<datetime>',nargs=1,help='Fetch historical data until date/time\n - e.g 2020-12-15.00:00:00')
-    optional.add_argument('-o','--date-offset',metavar='<offset>',nargs=1,help='Fetch historical data until start time minus [-] offset in days\n - e.g (2020-12-31.23:59:59 - 7 days) = 2020-12-24.23:59:59')
-    
+    optional.add_argument('-o','--date-offset',metavar='<integer>',nargs=1,help='Fetch historical data until start time minus [-] offset in days\n - e.g (2020-12-31.23:59:59 - 7 days) = 2020-12-24.23:59:59')
+    optional.add_argument('-p','--paired-coin',metavar='<coin>',nargs=1,help='Coin that will be paired with all existing coins on Binance in the process of downloading the history data.')
+
     global args
     args = parser.parse_args()
     
     if not (args.all_correlated_grouped or args.all_correlated_list or args.all_correlated_values or args.one_correlated_list or args.one_correlated_values or args.update_coins_history or args.update_top_coins):
-      parser.print_help()
-    
+      parser.print_help()    
+
     load_configuration()
+
+    if args.update_top_coins:
+      update_top_ranked_coins()
     
+    if args.update_coins_history:
+      update_coin_historical_klines()
 
-
-
-
-    """
-    try:
-        opts, args = getopt.getopt(
-            argv, "h", ["update-coins-history", "update-top-coins", "all-correlated-values", "one-correlated-values=", "all-correlated-list", "one-correlated-list=", "all-correlated-grouped", "help", "start-datetime", "end-datetime"])
-    except getopt.GetoptError:
-        print("usage:\t"+"binance_coins.py [option]")
-        sys.exit(2)
-    if len(opts) <= 0:
-        help()
-
-    for opt, arg in opts:
-        if opt == '-h' or opt == '--help' or opt not in ("--update-coins-history", "--update-top-coins", "--all-correlated-values", "--one-correlated-values=", "--all-correlated-list", "--one-correlated-list=", "--all-correlated-grouped"):
-            help()
-            sys.exit()
-        elif opt in ("--update-coins-history"):
-            update_coin_historical_klines()
-        elif opt in ("--update-top-coins"):
-            update_top_ranked_coins()
-        elif opt in ("--all-correlated-values"):
-            get_all_correlated_values()
-        elif opt in ("--one-correlated-values"):
-            get_one_correlated_values(arg)
-        elif opt in ("--all-correlated-list"):
-            get_all_correlated_list()
-        elif opt in ("--one-correlated-list"):
-            get_one_correlated_list(arg)
-        elif opt in ("--all-correlated-grouped"):
-            get_all_correlated_grouped()
-    """
+    if args.all_correlated_values:
+        get_all_correlated_values()
+    
+    if args.one_correlated_values:
+        get_one_correlated_values(args.one_correlated_values[0])
+    
+    if args.all_correlated_list:
+        get_all_correlated_list()
+    
+    if args.one_correlated_list:
+        get_one_correlated_list(args.one_correlated_list[0])
+    
+    if args.all_correlated_grouped:
+        get_all_correlated_grouped()
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main()
