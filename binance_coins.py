@@ -469,11 +469,12 @@ def update_top_ranked_coins():
         print(e)
 
 
-def load_configuration(args):
+def main(args):
+
     global first_n_coins, top_n_ranked_coins, correlation_greater_than, correlation_less_than, paired_coin, history_start, history_delta, history_end, history_interval, coin_history_file, used_coins_file, ignored_coins_file
 
     # read optional args
-    if args["start_datetime"]:
+    if "start_datetime" in args and args["start_datetime"]:
       try:
         #history_start = datetime.strptime(args["start_datetime"][0], '%Y-%m-%d.%H:%M:%S').replace(tzinfo=timezone.utc).astimezone(tz=None)
         history_start = datetime.strptime(args["start_datetime"][0], '%Y-%m-%d.%H:%M:%S').astimezone(tz=timezone.utc)
@@ -481,7 +482,7 @@ def load_configuration(args):
         print('Invalid Date format - expected : "%Y-%m-%d.%H:%M:%S"')
         exit()
 
-    if args["end_datetime"]:
+    if "end_datetime" in args and args["end_datetime"]:
       try:
         #history_end = datetime.strptime(args["end_datetime"][0], '%Y-%m-%d.%H:%M:%S').replace(tzinfo=timezone.utc).astimezone(tz=None)
         history_end = datetime.strptime(args["end_datetime"][0], '%Y-%m-%d.%H:%M:%S').astimezone(tz=timezone.utc)
@@ -489,14 +490,14 @@ def load_configuration(args):
         print('Invalid Date format - expected : "%Y-%m-%d.%H:%M:%S"')
         exit()
 
-    if args["date_offset"] and int(args["date_offset"][0]) > 0:
+    if "date_offset" in args and args["date_offset"] and int(args["date_offset"][0]) > 0:
       try:
         history_delta = int(args["date_offset"][0])
       except:
         print('Offset must be positive - expected : INT > 0')
         exit()
 
-    if args["paired_coin"]:
+    if "paired_coin" in args and args["paired_coin"]:
       try:
         paired_coin = str(args["paired_coin"][0])
       except:
@@ -504,29 +505,24 @@ def load_configuration(args):
 
     if history_start is None:
       history_start = (history_end - timedelta(days = history_delta))
+      
+    if "update_top_coins" in args and args["update_top_coins"]:
+      update_top_ranked_coins()
+    
+    if "update_coins_history" in args and args["update_coins_history"]:
+      update_coin_historical_klines()
 
-
-def main(args):
-
-  load_configuration(args)
-
-  if args["update_top_coins"]:
-    update_top_ranked_coins()
-  
-  if args["update_coins_history"]:
-    update_coin_historical_klines()
-
-  if args["all_correlated_values"]:
-      get_all_correlated_values()
-  
-  if args["one_correlated_values"]:
-      get_one_correlated_values(args["one_correlated_values"][0])
-  
-  if args["all_correlated_list"]:
-      get_all_correlated_list()
-  
-  if args["one_correlated_list"]:
-      get_one_correlated_list(args["one_correlated_list"][0])
-  
-  if args["all_correlated_grouped"]:
-      get_all_correlated_grouped()
+    if "all_correlated_values" in args and args["all_correlated_values"]:
+        get_all_correlated_values()
+    
+    if "one_correlated_values" in args and args["one_correlated_values"]:
+        get_one_correlated_values(args["one_correlated_values"][0])
+    
+    if "all_correlated_list" in args and args["all_correlated_list"]:
+        get_all_correlated_list()
+    
+    if "one_correlated_list" in args and args["one_correlated_list"]:
+        get_one_correlated_list(args["one_correlated_list"][0])
+    
+    if "all_correlated_grouped" in args and args["all_correlated_grouped"]:
+        get_all_correlated_grouped()

@@ -33,7 +33,6 @@ if __name__ == "__main__":
   optional.add_argument('-o','--date-offset',metavar='<integer>',nargs=1,help='Fetch historical data until start time minus [-] offset in days\n - e.g (2020-12-31.23:59:59 - 7 days) = 2020-12-24.23:59:59')
   optional.add_argument('-p','--paired-coin',metavar='<coin>',nargs=1,help='Coin that will be paired with all existing coins on Binance in the process of downloading the history data.')
 
-  global args
   args = parser.parse_args()
   
   if not (args.all_correlated_grouped or args.all_correlated_list or args.all_correlated_values or args.one_correlated_list or args.one_correlated_values or args.update_coins_history or args.update_top_coins):
