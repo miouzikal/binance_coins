@@ -1,5 +1,5 @@
 import argparse
-import binance_coins
+import correlated_coins
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description='********************************************************************************************************\n'+
@@ -25,7 +25,7 @@ if __name__ == "__main__":
   required.add_argument('-L', '--all-correlated-list',action='store_true',help='List of all correlated coins in "used_coins" file.')
   required.add_argument('-l', '--one-correlated-list',metavar='<coin>',nargs=1,help='List of all correlated coins in "used_coins" file with one.')
   required.add_argument('-G', '--all-correlated-grouped', action='store_true',help='List of all correlated coins in "used_coins" file grouped by their relationship.')
-  
+
   # Optionnal Arguments
   optional = parser.add_argument_group('Optionnal arguments')
   optional.add_argument('-s','--start-datetime',metavar='<datetime>',nargs=1,help='Fetch historical data from date/time\n - e.g 2020-12-31.23:59:59')
@@ -39,4 +39,7 @@ if __name__ == "__main__":
     parser.print_help()
     exit()
 
-binance_coins.main(vars(args))
+
+#print(vars(args))
+
+correlated_coins.main(vars(args))

@@ -301,7 +301,16 @@ def get_all_correlated_list():
     [filtered_correlated_coin_list.append(
         x) for x in correlated_coin_list if x not in filtered_correlated_coin_list]
 
-    print(sorted(filtered_correlated_coin_list))
+    #print(sorted(filtered_correlated_coin_list))
+    print("Updating supported_coin_list ...")
+    try:
+        with open('new_coin_list', 'w') as writer:
+          for coin in sorted(filtered_correlated_coin_list):
+                writer.write(coin+'\n')
+
+        print("supported_coin_list updated successfully!")
+    except (ConnectionError, Timeout, TooManyRedirects) as e:
+        print(e)
 
 
 def group_correlations(correlations):
@@ -438,24 +447,45 @@ def update_top_ranked_coins():
         if any([x in coin['symbol'].upper() for x in ['BULL', 'BEAR','UP', 'DOWN', 'HEDGE', 'LONG', 'SHORT']]) or coin['symbol'].upper() in ignored_coins:
             data.remove(coin)
             continue
+        
+        dirName = "temp/" + str(targetDate) + "/" + str(coin['symbol']).lower()
 
-        url = 'https://api.coingecko.com/api/v3/coins/' + str(coin['id']) + "/history?date=" + str(targetDate) + "&localization=false"
+        if not os.path.exists(dirName + "/total_volume") or os.stat(dirName + "/total_volume").st_size == 0:
+          url = 'https://api.coingecko.com/api/v3/coins/' + str(coin['id']) + "/history?date=" + str(targetDate) + "&localization=false"
 
-        session = Session()
-        session.headers.update(headers)
+          session = Session()
+          session.headers.update(headers)
 
-        response = session.get(url)
-        history = json.loads(response.text)
+          response = session.get(url)
+          history = json.loads(response.text)
 
-        try:
-            print(str(history['symbol']).upper() + ' ## ' + str(history['market_data']['total_volume']['usd']))
-            fullList[history['symbol'].upper()] = int(history['market_data']['total_volume']['usd'])   
-        except:
-            print(str(history['symbol']).upper() + ' ## unavailable!' )
+          try:
+              print(str(history['symbol']).upper() + ' ## ' + str(history['market_data']['total_volume']['usd']))
+              fullList[history['symbol'].upper()] = float(history['market_data']['total_volume']['usd'])
+          except:
+              print(str(history['symbol']).upper() + ' ## unavailable!' )
+              continue
+
+          # create folder structure
+          if not os.path.exists(dirName):
+              os.makedirs(dirName)
+
+          # save data to file for later use
+          try:
+            f = open(dirName + "/total_volume", "w")
+            f.write(str(history['market_data']['total_volume']['usd']))
+            f.close()
+          except:
+            print(f"unable to save total_volume for {coin['symbol']} ")
             pass
 
-        time.sleep(1.3)
-        
+          time.sleep(1.5)
+          
+        else:
+          f = open(dirName + "/total_volume", "r")
+          fullList[str(coin['symbol']).upper()] = float(f.read())
+          f.close()
+
     print("Parsing top "+str(top_n_ranked_coins)+" coins...")
     try:
         with open(used_coins_file, 'w') as writer:

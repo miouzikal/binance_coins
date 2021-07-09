@@ -2,3 +2,6 @@ config.ini
 historical_klines.json
 used_coins
 ignored_coins
+__pycache__
+temp
+new_coin_list
