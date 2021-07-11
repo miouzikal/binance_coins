@@ -8,7 +8,7 @@ import itertools as it
 import os
 import json
 import math
-import time, argparse
+import time
 from datetime import datetime, timezone, timedelta
 
 binance_api_key = ""
@@ -112,10 +112,8 @@ def get_one_coin_combinations(coin_list, coin):
 def get_coins_history(coin_list, bridge):
     klines = {}
 
-    end = str(history_end.timestamp())
-    start = str(history_start.timestamp())
-
-    print('Fetching trade data between "' + history_start.replace(tzinfo=timezone.utc).astimezone(tz=None).strftime('%d %B %Y %H:%M:%S') + '" and "' + history_end.replace(tzinfo=timezone.utc).astimezone(tz=None).strftime('%d %B %Y %H:%M:%S') + '"')
+    end = str(history_end.replace(microsecond=0).replace(tzinfo=timezone.utc).astimezone(tz=None))
+    start = str(history_start.replace(microsecond=0).replace(tzinfo=timezone.utc).astimezone(tz=None))
 
     count = 0
     for coin in coin_list:
@@ -175,10 +173,10 @@ def get_one_correlated_values(correlated_coin):
         print(c['coin_a']+"/"+c['coin_b']+": "+str(round(c['correlation'], 2)))
 
 
-def get_one_correlated_list(correlated_coin):
-    verify_coins_files()
+def get_one_correlated_list(correlated_coin, history):
+    verify_coins_files(history)
 
-    coins_history = read_coins_history_file()
+    coins_history = read_coins_history_file(history)
     ignored_coins = get_coins_from_file(
         ignored_coins_file) if os.path.isfile(ignored_coins_file) else []
 
@@ -217,10 +215,10 @@ def get_one_correlated_list(correlated_coin):
     print(sorted(filtered_correlated_coin_list))
 
 
-def get_all_correlated_values():
-    verify_coins_files()
+def get_all_correlated_values(history):
+    verify_coins_files(history)
 
-    coins_history = read_coins_history_file()
+    coins_history = read_coins_history_file(history)
     ignored_coins = get_coins_from_file(
         ignored_coins_file) if os.path.isfile(ignored_coins_file) else []
 
@@ -246,10 +244,10 @@ def get_all_correlated_values():
         print(c['coin_a']+"/"+c['coin_b']+": "+str(round(c['correlation'], 2)))
 
 
-def get_all_correlated_grouped():
-    verify_coins_files()
+def get_all_correlated_grouped(history):
+    verify_coins_files(history)
 
-    coins_history = read_coins_history_file()
+    coins_history = read_coins_history_file(history)
     ignored_coins = get_coins_from_file(
         ignored_coins_file) if os.path.isfile(ignored_coins_file) else []
     coin_list = []
@@ -270,10 +268,10 @@ def get_all_correlated_grouped():
     group_correlations(filtered_correlations)
 
 
-def get_all_correlated_list():
-    verify_coins_files()
+def get_all_correlated_list(history):
+    verify_coins_files(history)
 
-    coins_history = read_coins_history_file()
+    coins_history = read_coins_history_file(history)
     ignored_coins = get_coins_from_file(
         ignored_coins_file) if os.path.isfile(ignored_coins_file) else []
     coin_list = []
@@ -348,28 +346,61 @@ def group_correlations(correlations):
         print(sorted(coin_groups[i]))
 
 
-def verify_coins_files():
-    if not os.path.isfile(coin_history_file):
+def verify_coins_files(history = coin_history_file, used = used_coins_file):
+    if not os.path.isfile(history):
         raise Exception(
-            "Coin history '"+coin_history_file+"' not found, please run: binance_api.py --update-coins-history")
+            "Coin history '"+history+"' not found, please run: binance_api.py --update-coins-history")
 
-    if not os.path.isfile(used_coins_file):
+    if not os.path.isfile(used):
         raise Exception(
-            "Top coins file '"+used_coins_file+"' not found, please run: binance_api.py --update-top-coins")
+            "Top coins file '"+used+"' not found, please run: binance_api.py --update-top-coins")
 
 
-def update_coin_historical_klines():
-    coins_history = get_coins_history(
-        get_all_tickers(paired_coin), paired_coin)
-    with open(coin_history_file, 'w') as outfile:
+def update_coin_historical_klines(history = coin_history_file):
+
+    coins_history = {}
+    requested_start = history_start.replace(minute=0, second=0, microsecond=0).timestamp()
+    requested_end = history_end.replace(minute=0, second=0, microsecond=0).timestamp()
+    print(f'Fetching trade data between "{history_start.replace(microsecond=0).strftime("%d %B %Y")} ({requested_start}) and {history_end.replace(microsecond=0).strftime("%d %B %Y")} ({requested_end})')
+
+    try:
+        with open(history) as json_file:
+            klines = json.load(json_file)
+    except:
+        klines = None
+
+    for coin in get_all_tickers(paired_coin):
+        if klines is None or os.stat(history).st_size == 0 or coin not in list(klines) :
+            coins_history.update(get_coins_history([coin], paired_coin))
+        else:
+            try:
+                df = pd.DataFrame.from_records(klines[coin], columns=['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time',
+                                   'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'])
+
+                saved_start = datetime.fromtimestamp(int(df['open_time'].values[0]) / 1000, tz=timezone.utc).replace(minute=0, second=0, microsecond=0).timestamp()
+                saved_end = datetime.fromtimestamp(int(df['close_time'].values[-1]) / 1000, tz=timezone.utc).replace(minute=0, second=0, microsecond=0).timestamp()
+
+                if (requested_start == saved_start) and (requested_end == saved_end):
+                    coins_history[coin] = klines[coin]
+                else:
+                    raise
+            except Exception as e:
+                print(f"Unable to update history with saved data - {e}")
+                coins_history.update(get_coins_history([coin], paired_coin))
+                continue
+
+    # create folder structure
+    if not os.path.exists(os.path.dirname(os.path.abspath(history))):
+        os.makedirs(os.path.dirname(os.path.abspath(history)))
+
+    with open(history, 'w') as outfile:
         json.dump(coins_history, outfile)
 
-
-def read_coins_history_file():
+def read_coins_history_file(history = coin_history_file):
     kline_df = {}
     data = {}
 
-    with open(coin_history_file) as json_file:
+    with open(history) as json_file:
         data = json.load(json_file)
 
     for coin in data:
@@ -448,9 +479,14 @@ def update_top_ranked_coins():
             data.remove(coin)
             continue
         
-        dirName = "temp/" + str(targetDate) + "/" + str(coin['symbol']).lower()
+        dirName = "temp/" + str(targetDate)
+        try:
+            with open(dirName + '/coinVolume.json') as json_file:
+                coinVolume = json.load(json_file)
+        except:
+            coinVolume = None
 
-        if not os.path.exists(dirName + "/total_volume") or os.stat(dirName + "/total_volume").st_size == 0:
+        if coinVolume is None or os.stat(dirName + '/coinVolume.json').st_size == 0 or coin['symbol'].upper() not in coinVolume:
           url = 'https://api.coingecko.com/api/v3/coins/' + str(coin['id']) + "/history?date=" + str(targetDate) + "&localization=false"
 
           session = Session()
@@ -466,25 +502,17 @@ def update_top_ranked_coins():
               print(str(history['symbol']).upper() + ' ## unavailable!' )
               continue
 
-          # create folder structure
-          if not os.path.exists(dirName):
-              os.makedirs(dirName)
-
-          # save data to file for later use
-          try:
-            f = open(dirName + "/total_volume", "w")
-            f.write(str(history['market_data']['total_volume']['usd']))
-            f.close()
-          except:
-            print(f"unable to save total_volume for {coin['symbol']} ")
-            pass
-
           time.sleep(1.5)
-          
+
         else:
-          f = open(dirName + "/total_volume", "r")
-          fullList[str(coin['symbol']).upper()] = float(f.read())
-          f.close()
+          fullList[coin['symbol'].upper()] = coinVolume[coin['symbol'].upper()]
+
+    # create folder structure
+    if not os.path.exists(dirName):
+        os.makedirs(dirName)
+
+    with open(dirName + '/coinVolume.json', 'w') as outfile:
+        json.dump(fullList, outfile)
 
     print("Parsing top "+str(top_n_ranked_coins)+" coins...")
     try:
@@ -497,7 +525,6 @@ def update_top_ranked_coins():
         print("Top coin list stored successfully!")
     except (ConnectionError, Timeout, TooManyRedirects) as e:
         print(e)
-
 
 def main(args):
 
@@ -540,19 +567,19 @@ def main(args):
       update_top_ranked_coins()
     
     if "update_coins_history" in args and args["update_coins_history"]:
-      update_coin_historical_klines()
+      update_coin_historical_klines("temp/" + str(history_end.strftime('%d-%m-%Y')) + "/klines.json")
 
     if "all_correlated_values" in args and args["all_correlated_values"]:
-        get_all_correlated_values()
+        get_all_correlated_values("temp/" + str(history_end.strftime('%d-%m-%Y')) + "/klines.json")
     
     if "one_correlated_values" in args and args["one_correlated_values"]:
-        get_one_correlated_values(args["one_correlated_values"][0])
+        get_one_correlated_values(args["one_correlated_values"][0], "temp/" + str(history_end.strftime('%d-%m-%Y')) + "/klines.json")
     
     if "all_correlated_list" in args and args["all_correlated_list"]:
-        get_all_correlated_list()
+        get_all_correlated_list("temp/" + str(history_end.strftime('%d-%m-%Y')) + "/klines.json")
     
     if "one_correlated_list" in args and args["one_correlated_list"]:
-        get_one_correlated_list(args["one_correlated_list"][0])
+        get_one_correlated_list(args["one_correlated_list"][0], "temp/" + str(history_end.strftime('%d-%m-%Y')) + "/klines.json")
     
     if "all_correlated_grouped" in args and args["all_correlated_grouped"]:
-        get_all_correlated_grouped()
+        get_all_correlated_grouped("temp/" + str(history_end.strftime('%d-%m-%Y')) + "/klines.json")
